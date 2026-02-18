@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: blognest-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=./blognest.db
+      - GOOGLE_CLIENT_ID=24468091533-5vn7kqeosvr8npvnvdhsjpcci8mn2csd.apps.googleusercontent.com
+      - GOOGLE_CLIENT_SECRET=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
+      - JWT_SECRET=shyam_blognest_2026_secure_key
+    volumes:
+      - ./backend:/app
+      - backend-db:/root
+    networks:
+      - blognest-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: blognest-frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+    networks:
+      - blognest-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  backend-db:
+
+networks:
+  blognest-network:
+    driver: bridge
