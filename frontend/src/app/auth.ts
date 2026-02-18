@@ -2,12 +2,15 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, BehaviorSubject } from 'rxjs';
 import { Router } from '@angular/router';
+import { tap } from 'rxjs/operators';
 
 export interface User {
   id: string;
   google_id: string;
   email: string;
   name: string;
+  first_name: string;
+  last_name: string;
   picture: string;
 }
 
@@ -61,5 +64,31 @@ export class AuthService {
 
   isLoggedIn(): boolean {
     return !!localStorage.getItem('token');
+  }
+
+  signup(firstName: string, lastName: string, email: string, password: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/auth/signup`, {
+      first_name: firstName,
+      last_name: lastName,
+      email,
+      password
+    }).pipe(
+      tap((response: any) => {
+        localStorage.setItem('token', response.token);
+        this.userSubject.next(response.user);
+      })
+    );
+  }
+
+  login(email: string, password: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/auth/login`, {
+      email,
+      password
+    }).pipe(
+      tap((response: any) => {
+        localStorage.setItem('token', response.token);
+        this.userSubject.next(response.user);
+      })
+    );
   }
 }
