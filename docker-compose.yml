@@ -8,11 +8,8 @@ services:
     container_name: blognest-backend
     ports:
       - "8080:8080"
-    environment:
-      - DATABASE_URL=./blognest.db
-      - GOOGLE_CLIENT_ID=24468091533-5vn7kqeosvr8npvnvdhsjpcci8mn2csd.apps.googleusercontent.com
-      - GOOGLE_CLIENT_SECRET=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
-      - JWT_SECRET=shyam_blognest_2026_secure_key
+    env_file:
+      - .env
     volumes:
       - ./backend:/app
       - backend-db:/root
