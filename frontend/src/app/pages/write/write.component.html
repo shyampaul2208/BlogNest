@@ -1,0 +1,23 @@
+<app-navbar />
+
+<main class="write-page">
+  <div class="write-card">
+    <h2>Write a New Post</h2>
+    <p class="sub">Share your thoughts with the BlogNest community.</p>
+
+    <label for="title">Title</label>
+    <input id="title" type="text" [(ngModel)]="title" [disabled]="publishing" maxlength="120" placeholder="A clear, engaging title" />
+
+    <label for="content">Content</label>
+    <textarea id="content" [(ngModel)]="content" [disabled]="publishing" rows="12" placeholder="Write your story…"></textarea>
+
+    <div *ngIf="error" class="error-msg">{{ error }}</div>
+
+    <div class="actions">
+      <button class="btn-cancel" (click)="cancel()" [disabled]="publishing">Cancel</button>
+      <button class="btn-publish" (click)="publish()" [disabled]="publishing">
+        {{ publishing ? 'Publishing…' : 'Publish Post' }}
+      </button>
+    </div>
+  </div>
+</main>
