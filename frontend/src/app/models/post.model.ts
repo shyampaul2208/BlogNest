@@ -24,14 +24,15 @@ export interface RawPost {
   image_url?: string;
   CreatedAt?: string;
   createdAt?: string;
-  UpdatedAt?: string;
 }
 
 export interface Post {
   id: string;
+  userId: string;
   title: string;
   content: string;
   authorName: string;
-  createdAt: string; // ISO string
+  authorPicture: string;
+  createdAt: string;
   imageUrl?: string;
 }

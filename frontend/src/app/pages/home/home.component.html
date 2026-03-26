@@ -1,0 +1,49 @@
+<app-navbar />
+
+<main class="home">
+  <!-- Hero -->
+  <section class="hero">
+    <h2>Welcome back, {{ user?.name }}! 👋</h2>
+    <p>Ready to share your thoughts with the world?</p>
+    <button class="btn-write" (click)="goWrite()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      Write New Post
+    </button>
+  </section>
+
+  <!-- Stats -->
+  <section class="stats">
+    <div class="stat"><span class="stat-num">{{ myPosts.length }}</span><span class="stat-label">Posts</span></div>
+    <div class="stat"><span class="stat-num">0</span><span class="stat-label">Followers</span></div>
+    <div class="stat"><span class="stat-num">0</span><span class="stat-label">Likes</span></div>
+  </section>
+
+  <!-- My Posts -->
+  <section class="section">
+    <div class="section-head">
+      <h3>Your Posts</h3>
+      <button class="link-btn" (click)="goFeed()">Explore All</button>
+    </div>
+
+    <div *ngIf="loading" class="status">Loading your posts…</div>
+    <div *ngIf="error" class="status error">{{ error }}</div>
+
+    <div *ngIf="!loading && myPosts.length === 0 && !error" class="empty">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <h4>No posts yet</h4>
+      <p>Share your first story with the world!</p>
+      <button class="btn-write small" (click)="goWrite()">Create Your First Post</button>
+    </div>
+
+    <div *ngIf="!loading && myPosts.length > 0" class="post-grid">
+      <article *ngFor="let post of myPosts" class="post-card">
+        <h4>{{ post.title }}</h4>
+        <p class="post-body">{{ post.content }}</p>
+        <div class="post-meta">
+          <span>You</span>
+          <span>{{ post.createdAt | date:'mediumDate' }}</span>
+        </div>
+      </article>
+    </div>
+  </section>
+</main>
