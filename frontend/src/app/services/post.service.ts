@@ -1,41 +1,48 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, of } from 'rxjs';
-import { map, catchError } from 'rxjs/operators';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { Post, RawPost } from '../models/post.model';
 
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class PostService {
-  private baseUrl = '';
-
   constructor(private http: HttpClient) {}
 
-  getPosts(): Observable<Post[]> {
+  private authHeaders(): Record<string, string> {
     const token = localStorage.getItem('token');
-    const headers = token ? new HttpHeaders({ Authorization: `Bearer ${token}` }) : undefined;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
 
-    return this.http.get<RawPost[]>('/api/posts', { headers }).pipe(
-      map((raw) => (raw || []).map(r => this.normalize(r))),
-      catchError(err => {
-        console.error('Failed to fetch posts', err);
-        return of([]);
-      })
-    );
+  getPosts(): Observable<Post[]> {
+    return this.http
+      .get<RawPost[]>('/api/posts', { headers: this.authHeaders() })
+      .pipe(map((raw) => (raw || []).map((r) => this.normalize(r))));
+  }
+
+  getMyPosts(): Observable<Post[]> {
+    return this.http
+      .get<RawPost[]>('/api/my-posts', { headers: this.authHeaders() })
+      .pipe(map((raw) => (raw || []).map((r) => this.normalize(r))));
+  }
+
+  createPost(title: string, content: string): Observable<Post> {
+    return this.http
+      .post<RawPost>('/api/posts', { title, content }, { headers: this.authHeaders() })
+      .pipe(map((r) => this.normalize(r)));
   }
 
   private normalize(r: RawPost): Post {
     const id = r.id || r.ID || '';
+    const user = r.user || r.User;
+    const userId = r.user_id || r.UserID || user?.id || user?.ID || '';
     const title = r.title || r.Title || '';
     const content = r.content || r.Content || '';
     const imageUrl = r.image_url || r.ImageURL || undefined;
     const createdRaw = r.createdAt || r.CreatedAt;
     const createdAt = createdRaw ? new Date(createdRaw).toISOString() : new Date().toISOString();
-
-    const user = r.user || r.User;
     const authorName = user ? (user.name || user.Name || 'Unknown') : 'Unknown';
+    const authorPicture = user ? (user.picture || user.Picture || '') : '';
 
-    return { id, title, content, imageUrl, createdAt, authorName } as Post;
+    return { id, userId, title, content, imageUrl, createdAt, authorName, authorPicture };
   }
 }
