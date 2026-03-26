@@ -1,0 +1,25 @@
+<app-navbar />
+
+<main class="feed">
+  <h2>Explore Posts</h2>
+
+  <div *ngIf="loading" class="status">Loading posts…</div>
+  <div *ngIf="error && !loading" class="status error">{{ error }}</div>
+
+  <div *ngIf="!loading && !error && posts.length === 0" class="status empty">No posts yet. Be the first to write one!</div>
+
+  <div class="post-list" *ngIf="!loading && !error && posts.length > 0">
+    <article *ngFor="let post of posts" class="post-card">
+      <div class="card-header">
+        <img *ngIf="post.authorPicture" [src]="post.authorPicture" class="author-pic" referrerpolicy="no-referrer" alt="" />
+        <div *ngIf="!post.authorPicture" class="author-pic placeholder">{{ post.authorName.charAt(0) }}</div>
+        <div>
+          <span class="author-name">{{ post.authorName }}</span>
+          <span class="post-date">{{ post.createdAt | date:'medium' }}</span>
+        </div>
+      </div>
+      <h3>{{ post.title }}</h3>
+      <p class="post-content">{{ post.content }}</p>
+    </article>
+  </div>
+</main>
