@@ -1,0 +1,17 @@
+<header class="navbar">
+  <div class="navbar-inner">
+    <a routerLink="/home" class="brand">BlogNest</a>
+
+    <nav class="nav-links" *ngIf="user">
+      <a routerLink="/home" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">Home</a>
+      <a routerLink="/feed" routerLinkActive="active">Explore</a>
+      <a routerLink="/write" routerLinkActive="active">Write</a>
+    </nav>
+
+    <div class="user-area" *ngIf="user">
+      <img *ngIf="user.picture" [src]="user.picture" [alt]="user.name" class="avatar" referrerpolicy="no-referrer" />
+      <span class="user-name">{{ user.name }}</span>
+      <button class="btn-sign-out" (click)="logout()">Sign Out</button>
+    </div>
+  </div>
+</header>
