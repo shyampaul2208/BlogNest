@@ -29,7 +29,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("open test db: %v", err)
 	}
 
-	if err := testDB.AutoMigrate(&User{}, &Post{}, &Comment{}, &Like{}); err != nil {
+	if err := testDB.AutoMigrate(&User{}, &Post{}, &Comment{}, &Like{}, &Follow{}); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}
 
@@ -482,8 +482,8 @@ func TestHandleLoginRejectsUnknownUser(t *testing.T) {
 	}
 
 	payload := decodeJSONBody(t, recorder)
-	if payload["error"] != "Invalid email or password" {
-		t.Fatalf("expected invalid credentials error, got %#v", payload["error"])
+	if payload["error"] != "User does not exist" {
+		t.Fatalf("expected user does not exist error, got %#v", payload["error"])
 	}
 }
 
@@ -640,5 +640,918 @@ func TestListMyPostsRequiresAuth(t *testing.T) {
 
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", recorder.Code)
+	}
+}
+
+// ======== Sprint 3 Tests ========
+
+// --- GET /api/posts/:id ---
+
+func TestGetPostReturnsPostWithCounts(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "author@example.com", "secret123")
+	post := Post{ID: "post-detail", UserID: user.ID, Title: "Detail Post", Content: "Detail body"}
+	db.Create(&post)
+
+	// Add a comment and a like
+	db.Create(&Comment{ID: "c1", PostID: "post-detail", UserID: user.ID, Content: "Nice"})
+	db.Create(&Like{ID: "l1", PostID: "post-detail", UserID: user.ID})
+
+	recorder := performRequest(router, http.MethodGet, "/api/posts/post-detail", nil, nil)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	postData, ok := payload["post"].(map[string]any)
+	if !ok {
+		t.Fatal("expected post object in response")
+	}
+	if postData["title"] != "Detail Post" {
+		t.Fatalf("expected title, got %#v", postData["title"])
+	}
+	if payload["comment_count"] != float64(1) {
+		t.Fatalf("expected comment_count 1, got %v", payload["comment_count"])
+	}
+	if payload["like_count"] != float64(1) {
+		t.Fatalf("expected like_count 1, got %v", payload["like_count"])
+	}
+}
+
+func TestGetPostReturns404ForMissingPost(t *testing.T) {
+	router := setupTestRouter(t)
+	recorder := performRequest(router, http.MethodGet, "/api/posts/nonexistent", nil, nil)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+}
+
+// --- PUT /api/posts/:id ---
+
+func TestUpdatePostUpdatesOwnPost(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "author@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	post := Post{ID: "post-edit", UserID: user.ID, Title: "Old Title", Content: "Old Content"}
+	db.Create(&post)
+
+	body := []byte(`{"title":"New Title","content":"New Content"}`)
+	recorder := performRequest(router, http.MethodPut, "/api/posts/post-edit", body, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var response Post
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Title != "New Title" || response.Content != "New Content" {
+		t.Fatalf("unexpected update result: %#v", response)
+	}
+}
+
+func TestUpdatePostRejectsForeignPost(t *testing.T) {
+	router := setupTestRouter(t)
+	owner := createTestUser(t, "owner@example.com", "secret123")
+	other := createTestUser(t, "other@example.com", "secret123")
+	otherToken := createTokenForUser(t, other.ID)
+	post := Post{ID: "post-foreign", UserID: owner.ID, Title: "Owned", Content: "Content"}
+	db.Create(&post)
+
+	body := []byte(`{"title":"Hacked","content":"Hacked"}`)
+	recorder := performRequest(router, http.MethodPut, "/api/posts/post-foreign", body, map[string]string{
+		"Authorization": "Bearer " + otherToken,
+	})
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", recorder.Code)
+	}
+}
+
+func TestUpdatePostReturns404ForMissingPost(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "author@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	body := []byte(`{"title":"X","content":"Y"}`)
+	recorder := performRequest(router, http.MethodPut, "/api/posts/missing-post", body, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+}
+
+func TestUpdatePostRequiresAuth(t *testing.T) {
+	router := setupTestRouter(t)
+	recorder := performRequest(router, http.MethodPut, "/api/posts/any-id", []byte(`{"title":"X","content":"Y"}`), nil)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", recorder.Code)
+	}
+}
+
+// --- DELETE /api/posts/:id ---
+
+func TestDeletePostDeletesOwnPost(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "author@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	post := Post{ID: "post-del", UserID: user.ID, Title: "Delete Me", Content: "Body"}
+	db.Create(&post)
+	db.Create(&Comment{ID: "cd1", PostID: "post-del", UserID: user.ID, Content: "Comment"})
+	db.Create(&Like{ID: "ld1", PostID: "post-del", UserID: user.ID})
+
+	recorder := performRequest(router, http.MethodDelete, "/api/posts/post-del", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	// Verify post is gone
+	var p Post
+	if err := db.First(&p, "id = ?", "post-del").Error; err == nil {
+		t.Fatal("expected post to be deleted")
+	}
+
+	// Verify associated comments and likes are gone
+	var cCount int64
+	db.Model(&Comment{}).Where("post_id = ?", "post-del").Count(&cCount)
+	if cCount != 0 {
+		t.Fatalf("expected 0 comments, got %d", cCount)
+	}
+	var lCount int64
+	db.Model(&Like{}).Where("post_id = ?", "post-del").Count(&lCount)
+	if lCount != 0 {
+		t.Fatalf("expected 0 likes, got %d", lCount)
+	}
+}
+
+func TestDeletePostRejectsForeignPost(t *testing.T) {
+	router := setupTestRouter(t)
+	owner := createTestUser(t, "owner@example.com", "secret123")
+	other := createTestUser(t, "other@example.com", "secret123")
+	otherToken := createTokenForUser(t, other.ID)
+	post := Post{ID: "post-nodelete", UserID: owner.ID, Title: "No Delete", Content: "Content"}
+	db.Create(&post)
+
+	recorder := performRequest(router, http.MethodDelete, "/api/posts/post-nodelete", nil, map[string]string{
+		"Authorization": "Bearer " + otherToken,
+	})
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", recorder.Code)
+	}
+}
+
+func TestDeletePostRequiresAuth(t *testing.T) {
+	router := setupTestRouter(t)
+	recorder := performRequest(router, http.MethodDelete, "/api/posts/any-id", nil, nil)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", recorder.Code)
+	}
+}
+
+// --- Comments ---
+
+func TestListCommentsReturnsCommentsInOrder(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "commenter@example.com", "secret123")
+	post := Post{ID: "post-comments", UserID: user.ID, Title: "Post", Content: "Body"}
+	db.Create(&post)
+
+	now := time.Now()
+	db.Create(&Comment{ID: "c-old", PostID: "post-comments", UserID: user.ID, Content: "First", CreatedAt: now.Add(-1 * time.Hour)})
+	db.Create(&Comment{ID: "c-new", PostID: "post-comments", UserID: user.ID, Content: "Second", CreatedAt: now})
+
+	recorder := performRequest(router, http.MethodGet, "/api/posts/post-comments/comments", nil, nil)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	var comments []Comment
+	if err := json.Unmarshal(recorder.Body.Bytes(), &comments); err != nil {
+		t.Fatalf("decode comments: %v", err)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(comments))
+	}
+	if comments[0].ID != "c-old" {
+		t.Fatalf("expected oldest first, got %s", comments[0].ID)
+	}
+	if comments[0].User.Email == "" {
+		t.Fatal("expected user preloaded on comment")
+	}
+}
+
+func TestCreateCommentCreatesComment(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "commenter@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	post := Post{ID: "post-c", UserID: user.ID, Title: "Post", Content: "Body"}
+	db.Create(&post)
+
+	body := []byte(`{"content":"Great post!"}`)
+	recorder := performRequest(router, http.MethodPost, "/api/posts/post-c/comments", body, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var comment Comment
+	if err := json.Unmarshal(recorder.Body.Bytes(), &comment); err != nil {
+		t.Fatalf("decode comment: %v", err)
+	}
+	if comment.Content != "Great post!" {
+		t.Fatalf("unexpected comment content: %q", comment.Content)
+	}
+	if comment.PostID != "post-c" {
+		t.Fatalf("expected post_id post-c, got %q", comment.PostID)
+	}
+}
+
+func TestCreateCommentRequiresAuth(t *testing.T) {
+	router := setupTestRouter(t)
+	recorder := performRequest(router, http.MethodPost, "/api/posts/any/comments", []byte(`{"content":"Hi"}`), nil)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", recorder.Code)
+	}
+}
+
+func TestCreateCommentRejectsEmptyContent(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "commenter@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	post := Post{ID: "post-empty-c", UserID: user.ID, Title: "Post", Content: "Body"}
+	db.Create(&post)
+
+	body := []byte(`{"content":"   "}`)
+	recorder := performRequest(router, http.MethodPost, "/api/posts/post-empty-c/comments", body, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", recorder.Code)
+	}
+}
+
+func TestCreateCommentRejects404Post(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "commenter@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+
+	body := []byte(`{"content":"Hello"}`)
+	recorder := performRequest(router, http.MethodPost, "/api/posts/missing/comments", body, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+}
+
+func TestDeleteCommentDeletesOwnComment(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "commenter@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	db.Create(&Comment{ID: "c-del", PostID: "post-x", UserID: user.ID, Content: "Delete me"})
+
+	recorder := performRequest(router, http.MethodDelete, "/api/comments/c-del", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+}
+
+func TestDeleteCommentRejectsForeignComment(t *testing.T) {
+	router := setupTestRouter(t)
+	owner := createTestUser(t, "owner@example.com", "secret123")
+	other := createTestUser(t, "other@example.com", "secret123")
+	otherToken := createTokenForUser(t, other.ID)
+	db.Create(&Comment{ID: "c-foreign", PostID: "post-x", UserID: owner.ID, Content: "Not yours"})
+
+	recorder := performRequest(router, http.MethodDelete, "/api/comments/c-foreign", nil, map[string]string{
+		"Authorization": "Bearer " + otherToken,
+	})
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", recorder.Code)
+	}
+}
+
+func TestDeleteCommentReturns404ForMissing(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "commenter@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+
+	recorder := performRequest(router, http.MethodDelete, "/api/comments/missing", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+}
+
+// --- Likes ---
+
+func TestToggleLikeCreatesLike(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "liker@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	post := Post{ID: "post-like", UserID: user.ID, Title: "Like Me", Content: "Body"}
+	db.Create(&post)
+
+	recorder := performRequest(router, http.MethodPost, "/api/posts/post-like/like", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["liked"] != true {
+		t.Fatalf("expected liked=true, got %v", payload["liked"])
+	}
+	if payload["like_count"] != float64(1) {
+		t.Fatalf("expected like_count=1, got %v", payload["like_count"])
+	}
+}
+
+func TestToggleLikeRemovesExistingLike(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "liker@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	post := Post{ID: "post-unlike", UserID: user.ID, Title: "Unlike Me", Content: "Body"}
+	db.Create(&post)
+	db.Create(&Like{ID: "like-existing", PostID: "post-unlike", UserID: user.ID})
+
+	recorder := performRequest(router, http.MethodPost, "/api/posts/post-unlike/like", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["liked"] != false {
+		t.Fatalf("expected liked=false, got %v", payload["liked"])
+	}
+	if payload["like_count"] != float64(0) {
+		t.Fatalf("expected like_count=0, got %v", payload["like_count"])
+	}
+}
+
+func TestToggleLikeRequiresAuth(t *testing.T) {
+	router := setupTestRouter(t)
+	recorder := performRequest(router, http.MethodPost, "/api/posts/any/like", nil, nil)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", recorder.Code)
+	}
+}
+
+func TestToggleLikeRejects404Post(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "liker@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+
+	recorder := performRequest(router, http.MethodPost, "/api/posts/missing/like", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+}
+
+func TestGetLikeStatusReturnsCountAndLikedForAuthUser(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "liker@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	post := Post{ID: "post-ls", UserID: user.ID, Title: "Status", Content: "Body"}
+	db.Create(&post)
+	db.Create(&Like{ID: "like-ls", PostID: "post-ls", UserID: user.ID})
+
+	recorder := performRequest(router, http.MethodGet, "/api/posts/post-ls/like", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["liked"] != true {
+		t.Fatalf("expected liked=true, got %v", payload["liked"])
+	}
+	if payload["like_count"] != float64(1) {
+		t.Fatalf("expected like_count=1, got %v", payload["like_count"])
+	}
+}
+
+func TestGetLikeStatusReturnsCountWithoutAuth(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "author@example.com", "secret123")
+	post := Post{ID: "post-ls2", UserID: user.ID, Title: "Public", Content: "Body"}
+	db.Create(&post)
+	db.Create(&Like{ID: "like-ls2", PostID: "post-ls2", UserID: user.ID})
+
+	recorder := performRequest(router, http.MethodGet, "/api/posts/post-ls2/like", nil, nil)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["liked"] != false {
+		t.Fatalf("expected liked=false for unauthenticated, got %v", payload["liked"])
+	}
+	if payload["like_count"] != float64(1) {
+		t.Fatalf("expected like_count=1, got %v", payload["like_count"])
+	}
+}
+
+// --- Route registration for new endpoints ---
+
+func TestRegisterRoutesIncludesSprint3Paths(t *testing.T) {
+	router := setupTestRouter(t)
+	routes := router.Routes()
+
+	expected := map[string]bool{
+		"GET /api/posts/:id":           false,
+		"PUT /api/posts/:id":           false,
+		"DELETE /api/posts/:id":        false,
+		"GET /api/posts/:id/comments":  false,
+		"POST /api/posts/:id/comments": false,
+		"DELETE /api/comments/:id":     false,
+		"POST /api/posts/:id/like":     false,
+		"GET /api/posts/:id/like":      false,
+		"GET /api/users/search":        false,
+		"GET /api/users/:id/posts":     false,
+	}
+
+	for _, route := range routes {
+		key := route.Method + " " + route.Path
+		if _, ok := expected[key]; ok {
+			expected[key] = true
+		}
+	}
+
+	for route, found := range expected {
+		if !found {
+			t.Fatalf("expected route %s to be registered", route)
+		}
+	}
+}
+
+// === User Search Tests ===
+
+func TestSearchUsersReturnsEmptyForBlankQuery(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "searcher@test.com", "pass123")
+	token := createTokenForUser(t, user.ID)
+
+	recorder := performRequest(router, "GET", "/api/users/search?q=", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	var result []map[string]any
+	json.Unmarshal(recorder.Body.Bytes(), &result)
+	if len(result) != 0 {
+		t.Fatalf("expected empty array, got %d items", len(result))
+	}
+}
+
+func TestSearchUsersFindsMatchingUsers(t *testing.T) {
+	router := setupTestRouter(t)
+	searcher := createTestUser(t, "searcher@test.com", "pass123")
+	token := createTokenForUser(t, searcher.ID)
+
+	// Create some users to search for
+	db.Create(&User{ID: "alice-id", Email: "alice@test.com", Name: "Alice Wonderland"})
+	db.Create(&User{ID: "bob-id", Email: "bob@test.com", Name: "Bob Builder"})
+	db.Create(&User{ID: "charlie-id", Email: "charlie@test.com", Name: "Charlie Brown"})
+
+	recorder := performRequest(router, "GET", "/api/users/search?q=alice", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	var result []map[string]any
+	json.Unmarshal(recorder.Body.Bytes(), &result)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(result))
+	}
+	if result[0]["name"] != "Alice Wonderland" {
+		t.Fatalf("expected Alice Wonderland, got %v", result[0]["name"])
+	}
+}
+
+func TestSearchUsersMatchesByEmail(t *testing.T) {
+	router := setupTestRouter(t)
+	searcher := createTestUser(t, "searcher@test.com", "pass123")
+	token := createTokenForUser(t, searcher.ID)
+
+	db.Create(&User{ID: "dave-id", Email: "dave@example.org", Name: "Dave"})
+
+	recorder := performRequest(router, "GET", "/api/users/search?q=example.org", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	var result []map[string]any
+	json.Unmarshal(recorder.Body.Bytes(), &result)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(result))
+	}
+	if result[0]["email"] != "dave@example.org" {
+		t.Fatalf("expected dave@example.org, got %v", result[0]["email"])
+	}
+}
+
+func TestSearchUsersReturnsNoMatchesGracefully(t *testing.T) {
+	router := setupTestRouter(t)
+	searcher := createTestUser(t, "searcher@test.com", "pass123")
+	token := createTokenForUser(t, searcher.ID)
+
+	recorder := performRequest(router, "GET", "/api/users/search?q=zzzznotfound", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	var result []map[string]any
+	json.Unmarshal(recorder.Body.Bytes(), &result)
+	if len(result) != 0 {
+		t.Fatalf("expected 0 results, got %d", len(result))
+	}
+}
+
+func TestSearchUsersRequiresAuth(t *testing.T) {
+	router := setupTestRouter(t)
+
+	recorder := performRequest(router, "GET", "/api/users/search?q=alice", nil, nil)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", recorder.Code)
+	}
+}
+
+// === Get User Posts Tests ===
+
+func TestGetUserPostsReturnsUserAndPosts(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "author@test.com", "pass123")
+
+	// Create posts for this user
+	db.Create(&Post{ID: "post-1", UserID: user.ID, Title: "First Post", Content: "Body 1"})
+	db.Create(&Post{ID: "post-2", UserID: user.ID, Title: "Second Post", Content: "Body 2"})
+
+	recorder := performRequest(router, "GET", "/api/users/"+user.ID+"/posts", nil, nil)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	userObj, ok := payload["user"].(map[string]any)
+	if !ok {
+		t.Fatal("expected user object in response")
+	}
+	if userObj["email"] != "author@test.com" {
+		t.Fatalf("expected author@test.com, got %v", userObj["email"])
+	}
+
+	posts, ok := payload["posts"].([]any)
+	if !ok {
+		t.Fatal("expected posts array in response")
+	}
+	if len(posts) != 2 {
+		t.Fatalf("expected 2 posts, got %d", len(posts))
+	}
+}
+
+func TestGetUserPostsReturns404ForUnknownUser(t *testing.T) {
+	router := setupTestRouter(t)
+
+	recorder := performRequest(router, "GET", "/api/users/nonexistent-user/posts", nil, nil)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["error"] != "User not found" {
+		t.Fatalf("expected 'User not found' error, got %v", payload["error"])
+	}
+}
+
+func TestGetUserPostsReturnsEmptyPostsForUserWithNoPosts(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "nopost@test.com", "pass123")
+
+	recorder := performRequest(router, "GET", "/api/users/"+user.ID+"/posts", nil, nil)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	posts, ok := payload["posts"].([]any)
+	if !ok {
+		t.Fatal("expected posts array in response")
+	}
+	if len(posts) != 0 {
+		t.Fatalf("expected 0 posts, got %d", len(posts))
+	}
+}
+
+func TestGetUserPostsIsPublic(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "public@test.com", "pass123")
+
+	// No auth header - should still work
+	recorder := performRequest(router, "GET", "/api/users/"+user.ID+"/posts", nil, nil)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 without auth, got %d", recorder.Code)
+	}
+}
+
+// === Follow System Tests ===
+
+func TestToggleFollowCreatesFollow(t *testing.T) {
+	router := setupTestRouter(t)
+	user1 := createTestUser(t, "follower@test.com", "pass123")
+	user2 := createTestUser(t, "target@test.com", "pass123")
+	token := createTokenForUser(t, user1.ID)
+
+	recorder := performRequest(router, "POST", "/api/users/"+user2.ID+"/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["following"] != true {
+		t.Fatalf("expected following=true, got %v", payload["following"])
+	}
+	if payload["follower_count"] != float64(1) {
+		t.Fatalf("expected follower_count=1, got %v", payload["follower_count"])
+	}
+}
+
+func TestToggleFollowUnfollows(t *testing.T) {
+	router := setupTestRouter(t)
+	user1 := createTestUser(t, "follower@test.com", "pass123")
+	user2 := createTestUser(t, "target@test.com", "pass123")
+	token := createTokenForUser(t, user1.ID)
+
+	// Follow first
+	performRequest(router, "POST", "/api/users/"+user2.ID+"/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	// Toggle again = unfollow
+	recorder := performRequest(router, "POST", "/api/users/"+user2.ID+"/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["following"] != false {
+		t.Fatalf("expected following=false after unfollow, got %v", payload["following"])
+	}
+	if payload["follower_count"] != float64(0) {
+		t.Fatalf("expected follower_count=0 after unfollow, got %v", payload["follower_count"])
+	}
+}
+
+func TestToggleFollowSelfBlocked(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "self@test.com", "pass123")
+	token := createTokenForUser(t, user.ID)
+
+	recorder := performRequest(router, "POST", "/api/users/"+user.ID+"/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for self-follow, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["error"] != "Cannot follow yourself" {
+		t.Fatalf("expected self-follow error, got %v", payload["error"])
+	}
+}
+
+func TestToggleFollowRequiresAuth(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "target@test.com", "pass123")
+
+	recorder := performRequest(router, "POST", "/api/users/"+user.ID+"/follow", nil, nil)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", recorder.Code)
+	}
+}
+
+func TestToggleFollow404ForMissingUser(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "follower@test.com", "pass123")
+	token := createTokenForUser(t, user.ID)
+
+	recorder := performRequest(router, "POST", "/api/users/nonexistent/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
+	}
+}
+
+func TestGetFollowStatusReturnsCorrectState(t *testing.T) {
+	router := setupTestRouter(t)
+	user1 := createTestUser(t, "follower@test.com", "pass123")
+	user2 := createTestUser(t, "target@test.com", "pass123")
+	token := createTokenForUser(t, user1.ID)
+
+	// Not following yet
+	recorder := performRequest(router, "GET", "/api/users/"+user2.ID+"/follow-status", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["following"] != false {
+		t.Fatalf("expected following=false, got %v", payload["following"])
+	}
+
+	// Follow the user
+	performRequest(router, "POST", "/api/users/"+user2.ID+"/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	// Now check status
+	recorder = performRequest(router, "GET", "/api/users/"+user2.ID+"/follow-status", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	payload = decodeJSONBody(t, recorder)
+	if payload["following"] != true {
+		t.Fatalf("expected following=true after follow, got %v", payload["following"])
+	}
+	if payload["follower_count"] != float64(1) {
+		t.Fatalf("expected follower_count=1, got %v", payload["follower_count"])
+	}
+}
+
+func TestGetFollowStatusRequiresAuth(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "target@test.com", "pass123")
+
+	recorder := performRequest(router, "GET", "/api/users/"+user.ID+"/follow-status", nil, nil)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", recorder.Code)
+	}
+}
+
+func TestGetFollowCountsIsPublic(t *testing.T) {
+	router := setupTestRouter(t)
+	user1 := createTestUser(t, "follower@test.com", "pass123")
+	user2 := createTestUser(t, "target@test.com", "pass123")
+	token := createTokenForUser(t, user1.ID)
+
+	// Follow user2
+	performRequest(router, "POST", "/api/users/"+user2.ID+"/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	// Get counts without auth
+	recorder := performRequest(router, "GET", "/api/users/"+user2.ID+"/counts", nil, nil)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	payload := decodeJSONBody(t, recorder)
+	if payload["follower_count"] != float64(1) {
+		t.Fatalf("expected follower_count=1, got %v", payload["follower_count"])
+	}
+	if payload["following_count"] != float64(0) {
+		t.Fatalf("expected following_count=0, got %v", payload["following_count"])
+	}
+}
+
+func TestFollowCountsAccuracy(t *testing.T) {
+	router := setupTestRouter(t)
+	user1 := createTestUser(t, "a@test.com", "pass123")
+	user2 := createTestUser(t, "b@test.com", "pass123")
+	user3 := createTestUser(t, "c@test.com", "pass123")
+	token1 := createTokenForUser(t, user1.ID)
+	token2 := createTokenForUser(t, user2.ID)
+
+	// user1 follows user3
+	performRequest(router, "POST", "/api/users/"+user3.ID+"/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token1,
+	})
+	// user2 follows user3
+	performRequest(router, "POST", "/api/users/"+user3.ID+"/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token2,
+	})
+	// user1 follows user2
+	performRequest(router, "POST", "/api/users/"+user2.ID+"/follow", nil, map[string]string{
+		"Authorization": "Bearer " + token1,
+	})
+
+	// user3 should have 2 followers, 0 following
+	recorder := performRequest(router, "GET", "/api/users/"+user3.ID+"/counts", nil, nil)
+	payload := decodeJSONBody(t, recorder)
+	if payload["follower_count"] != float64(2) {
+		t.Fatalf("expected user3 follower_count=2, got %v", payload["follower_count"])
+	}
+	if payload["following_count"] != float64(0) {
+		t.Fatalf("expected user3 following_count=0, got %v", payload["following_count"])
+	}
+
+	// user1 should have 0 followers, 2 following
+	recorder = performRequest(router, "GET", "/api/users/"+user1.ID+"/counts", nil, nil)
+	payload = decodeJSONBody(t, recorder)
+	if payload["follower_count"] != float64(0) {
+		t.Fatalf("expected user1 follower_count=0, got %v", payload["follower_count"])
+	}
+	if payload["following_count"] != float64(2) {
+		t.Fatalf("expected user1 following_count=2, got %v", payload["following_count"])
+	}
+
+	// user2 should have 1 follower, 1 following
+	recorder = performRequest(router, "GET", "/api/users/"+user2.ID+"/counts", nil, nil)
+	payload = decodeJSONBody(t, recorder)
+	if payload["follower_count"] != float64(1) {
+		t.Fatalf("expected user2 follower_count=1, got %v", payload["follower_count"])
+	}
+	if payload["following_count"] != float64(1) {
+		t.Fatalf("expected user2 following_count=1, got %v", payload["following_count"])
+	}
+}
+
+func TestRegisterRoutesIncludesFollowPaths(t *testing.T) {
+	router := setupTestRouter(t)
+	routes := router.Routes()
+
+	expected := map[string]bool{
+		"POST /api/users/:id/follow":       false,
+		"GET /api/users/:id/follow-status": false,
+		"GET /api/users/:id/counts":        false,
+	}
+
+	for _, route := range routes {
+		key := route.Method + " " + route.Path
+		if _, ok := expected[key]; ok {
+			expected[key] = true
+		}
+	}
+
+	for route, found := range expected {
+		if !found {
+			t.Fatalf("expected route %s to be registered", route)
+		}
 	}
 }
