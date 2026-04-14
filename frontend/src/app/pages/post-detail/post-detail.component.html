@@ -1,0 +1,76 @@
+<app-navbar />
+
+<main class="detail-page">
+  <button class="btn-back" (click)="goBack()">← Back to Feed</button>
+
+  <div *ngIf="loading" class="status">Loading post…</div>
+  <div *ngIf="error && !loading" class="status error">{{ error }}</div>
+
+  <div *ngIf="post && !loading && !editing" class="post-full">
+    <!-- Post header -->
+    <div class="post-header">
+      <div class="author-info">
+        <img *ngIf="post.authorPicture" [src]="post.authorPicture" class="author-pic" referrerpolicy="no-referrer" alt="" />
+        <div *ngIf="!post.authorPicture" class="author-pic placeholder">{{ post.authorName.charAt(0) }}</div>
+        <div>
+          <span class="author-name">{{ post.authorName }}</span>
+          <span class="post-date">{{ post.createdAt | date:'medium' }}</span>
+        </div>
+      </div>
+      <div class="owner-actions" *ngIf="isOwner()">
+        <button class="btn-edit" (click)="startEdit()">Edit</button>
+        <button class="btn-delete" (click)="confirmDelete()">Delete</button>
+      </div>
+    </div>
+
+    <h1>{{ post.title }}</h1>
+    <div class="post-body">{{ post.content }}</div>
+
+    <!-- Like section -->
+    <div class="like-section">
+      <button class="btn-like" [class.liked]="likeStatus.liked" (click)="toggleLike()">
+        <svg width="18" height="18" viewBox="0 0 24 24" [attr.fill]="likeStatus.liked ? '#ef4444' : 'none'" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        {{ likeStatus.like_count }} {{ likeStatus.like_count === 1 ? 'Like' : 'Likes' }}
+      </button>
+    </div>
+
+    <!-- Comments section -->
+    <div class="comments-section">
+      <h3>Comments ({{ comments.length }})</h3>
+
+      <div class="comment-form">
+        <textarea [(ngModel)]="newComment" placeholder="Write a comment…" rows="3" [disabled]="submittingComment"></textarea>
+        <button class="btn-comment" (click)="submitComment()" [disabled]="submittingComment || !newComment.trim()">
+          {{ submittingComment ? 'Posting…' : 'Post Comment' }}
+        </button>
+      </div>
+
+      <div *ngIf="comments.length === 0" class="no-comments">No comments yet. Be the first to share your thoughts!</div>
+
+      <div class="comment-list">
+        <div *ngFor="let comment of comments" class="comment-card">
+          <div class="comment-header">
+            <span class="comment-author">{{ getCommentAuthor(comment) }}</span>
+            <span class="comment-date">{{ comment.CreatedAt | date:'medium' }}</span>
+            <button *ngIf="comment.user_id === user?.id" class="btn-remove-comment" (click)="removeComment(comment.id)">Delete</button>
+          </div>
+          <p class="comment-content">{{ comment.content }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit mode -->
+  <div *ngIf="editing && post" class="edit-card">
+    <h2>Edit Post</h2>
+    <label for="editTitle">Title</label>
+    <input id="editTitle" type="text" [(ngModel)]="editTitle" [disabled]="saving" maxlength="120" />
+    <label for="editContent">Content</label>
+    <textarea id="editContent" [(ngModel)]="editContent" [disabled]="saving" rows="12"></textarea>
+    <div *ngIf="editError" class="error-msg">{{ editError }}</div>
+    <div class="edit-actions">
+      <button class="btn-cancel" (click)="cancelEdit()" [disabled]="saving">Cancel</button>
+      <button class="btn-save" (click)="saveEdit()" [disabled]="saving">{{ saving ? 'Saving…' : 'Save Changes' }}</button>
+    </div>
+  </div>
+</main>
