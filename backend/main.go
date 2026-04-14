@@ -25,6 +25,8 @@ import (
 
 var db *gorm.DB
 var oauthConfig *oauth2.Config
+var frontendURL string
+var googleUserInfoURL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 func main() {
 	// Load .env
@@ -32,9 +34,13 @@ func main() {
 		log.Println("No .env file found")
 	}
 
+	frontendURL = getEnv("FRONTEND_URL", "http://localhost:4200")
+	backendURL := getEnv("BACKEND_URL", "http://localhost:8080")
+	oauthRedirectURL := getEnv("OAUTH_REDIRECT_URL", backendURL+"/auth/callback")
+
 	// Database
 	var err error
-	db, err = gorm.Open(sqlite.Open(os.Getenv("DATABASE_URL")), &gorm.Config{})
+	db, err = gorm.Open(sqlite.Open(getEnv("DATABASE_URL", "./blognest.db")), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
@@ -46,7 +52,7 @@ func main() {
 	oauthConfig = &oauth2.Config{
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		RedirectURL:  "http://localhost:8080/auth/callback",
+		RedirectURL:  oauthRedirectURL,
 		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
 		Endpoint:     google.Endpoint,
 	}
@@ -62,21 +68,44 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Routes
-	r.GET("/auth/google", handleGoogleLogin)
-	r.GET("/auth/callback", handleGoogleCallback)
-	r.POST("/auth/signup", handleSignup)
-	r.POST("/auth/login", handleLogin)
-
-	// Protected routes later
-	r.GET("/me", authMiddleware(), getMe)
+	registerRoutes(r)
 
 	r.Run(":8080")
 }
 
+func registerRoutes(r *gin.Engine) {
+	api := r.Group("/api")
+	{
+		api.GET("/health", healthCheck)
+		api.GET("/posts", listPosts)
+		api.GET("/my-posts", authMiddleware(), listMyPosts)
+		api.POST("/posts", authMiddleware(), createPost)
+		api.GET("/me", authMiddleware(), getMe)
+
+		auth := api.Group("/auth")
+		{
+			auth.GET("/google", handleGoogleLogin)
+			auth.GET("/callback", handleGoogleCallback)
+			auth.POST("/signup", handleSignup)
+			auth.POST("/login", handleLogin)
+		}
+	}
+
+	// Backward-compatible routes for existing direct backend calls.
+	r.GET("/auth/google", handleGoogleLogin)
+	r.GET("/auth/callback", handleGoogleCallback)
+	r.POST("/auth/signup", handleSignup)
+	r.POST("/auth/login", handleLogin)
+	r.GET("/me", authMiddleware(), getMe)
+	r.GET("/posts", listPosts)
+	r.GET("/my-posts", authMiddleware(), listMyPosts)
+	r.POST("/posts", authMiddleware(), createPost)
+}
+
 func handleGoogleLogin(c *gin.Context) {
 	state := generateState()
-	c.SetCookie("oauth_state", state, 3600, "/", "localhost", false, true)
+	// Host-only cookie works for localhost and 127.0.0.1 during local development.
+	c.SetCookie("oauth_state", state, 3600, "/", "", false, true)
 	url := oauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
@@ -98,7 +127,7 @@ func handleGoogleCallback(c *gin.Context) {
 
 	// Get user info
 	client := oauthConfig.Client(context.Background(), token)
-	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
+	resp, err := client.Get(googleUserInfoURL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user info"})
 		return
@@ -142,7 +171,7 @@ func handleGoogleCallback(c *gin.Context) {
 	}
 
 	// Redirect to frontend with token
-	c.Redirect(http.StatusTemporaryRedirect, "http://localhost:4200/login?token="+jwtToken)
+	c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/login?token="+jwtToken)
 }
 
 func generateJWT(userID string) (string, error) {
@@ -198,10 +227,103 @@ func getMe(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+func listPosts(c *gin.Context) {
+	posts := []Post{}
+
+	if err := db.Preload("User").Order("created_at desc").Find(&posts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch posts"})
+		return
+	}
+
+	c.JSON(http.StatusOK, posts)
+}
+
+func listMyPosts(c *gin.Context) {
+	userValue, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found in context"})
+		return
+	}
+
+	user, ok := userValue.(User)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+		return
+	}
+
+	posts := []Post{}
+	if err := db.Preload("User").Where("user_id = ?", user.ID).Order("created_at desc").Find(&posts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user posts"})
+		return
+	}
+
+	c.JSON(http.StatusOK, posts)
+}
+
+func createPost(c *gin.Context) {
+	var req struct {
+		Title   string `json:"title" binding:"required"`
+		Content string `json:"content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userValue, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found in context"})
+		return
+	}
+
+	user, ok := userValue.(User)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+		return
+	}
+
+	post := Post{
+		ID:      uuid.New().String(),
+		UserID:  user.ID,
+		Title:   strings.TrimSpace(req.Title),
+		Content: strings.TrimSpace(req.Content),
+	}
+
+	if post.Title == "" || post.Content == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title and content are required"})
+		return
+	}
+
+	if err := db.Create(&post).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create post"})
+		return
+	}
+
+	if err := db.Preload("User").First(&post, "id = ?", post.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load created post"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, post)
+}
+
+func healthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func generateState() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return base64.URLEncoding.EncodeToString(b)
+}
+
+func getEnv(key string, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+
+	return fallback
 }
 
 func handleSignup(c *gin.Context) {
