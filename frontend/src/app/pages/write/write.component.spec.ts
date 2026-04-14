@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router } from '@angular/router';
-import { of, throwError, BehaviorSubject, Subject } from 'rxjs';
+import { of, throwError, BehaviorSubject } from 'rxjs';
 import { provideRouter } from '@angular/router';
 import { WriteComponent } from './write.component';
 import { PostService } from '../../services/post.service';
@@ -12,11 +12,11 @@ import { vi } from 'vitest';
 describe('WriteComponent', () => {
   let component: WriteComponent;
   let fixture: ComponentFixture<WriteComponent>;
-  let postService: { createPost: ReturnType<typeof vi.fn>; getFollowCounts: ReturnType<typeof vi.fn>; followCountRefresh$: Subject<void> };
+  let postService: { createPost: ReturnType<typeof vi.fn> };
   let router: Router;
 
   beforeEach(async () => {
-    postService = { createPost: vi.fn(), getFollowCounts: vi.fn().mockReturnValue(of({ follower_count: 0, following_count: 0 })), followCountRefresh$: new Subject<void>() };
+    postService = { createPost: vi.fn() };
 
     const authStub = {
       user$: new BehaviorSubject(null).asObservable(),

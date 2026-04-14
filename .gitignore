@@ -1,34 +1,13 @@
-# Environment files
 .env
 *.env
 .env.*
-
-# Go
 backend/blognest.db
-backend/tmp/
-
-# Node / Angular
 frontend/node_modules/
 frontend/dist/
 frontend/.angular/
-frontend/.cache/
-
-# Cypress
 frontend/cypress/videos/
 frontend/cypress/screenshots/
-frontend/cypress/downloads/
-
-# OS files
 .DS_Store
-Thumbs.db
-
-# IDE
 .idea/
 .vscode/
-*.swp
-*.swo
-*~
-
-# Logs
 *.log
-npm-debug.log*
