@@ -43,3 +43,12 @@ type Like struct {
 	UserID string `json:"user_id"`
 	User   User   `json:"user" gorm:"foreignKey:UserID"`
 }
+
+type Follow struct {
+	ID          string `json:"id" gorm:"primaryKey"`
+	FollowerID  string `json:"follower_id" gorm:"index"`
+	FollowingID string `json:"following_id" gorm:"index"`
+	Follower    User   `json:"follower" gorm:"foreignKey:FollowerID"`
+	Following   User   `json:"following" gorm:"foreignKey:FollowingID"`
+	CreatedAt   time.Time
+}
