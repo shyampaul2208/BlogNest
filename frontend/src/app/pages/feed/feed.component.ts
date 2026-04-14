@@ -1,10 +1,11 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { PostService } from '../../services/post.service';
 import { NavbarComponent } from '../../shared/navbar/navbar.component';
-import { Post } from '../../models/post.model';
+import { Post, LikeStatus, FollowStatus } from '../../models/post.model';
 
 @Component({
   selector: 'app-feed',
@@ -17,19 +18,23 @@ export class FeedComponent implements OnInit, OnDestroy {
   posts: Post[] = [];
   loading = true;
   error = '';
-  private currentUserId = '';
+  likeMap: Record<string, LikeStatus> = {};
+  followMap: Record<string, FollowStatus> = {};
+  private allPosts: Post[] = [];
   private sub?: Subscription;
 
   constructor(
     private auth: AuthService,
     private postService: PostService,
+    private router: Router,
     private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
     this.sub = this.auth.user$.subscribe((u) => {
-      this.currentUserId = u?.id ?? '';
-      this.cdr.markForCheck();
+      const currentUserId = u?.id ?? '';
+      this.posts = this.allPosts.filter((p) => p.userId !== currentUserId);
+      this.cdr.detectChanges();
     });
     this.loadPosts();
   }
@@ -43,15 +48,71 @@ export class FeedComponent implements OnInit, OnDestroy {
     this.error = '';
     this.postService.getPosts().subscribe({
       next: (posts) => {
-        this.posts = posts.filter((p) => p.userId !== this.currentUserId);
+        this.allPosts = posts;
+        const currentUserId = this.auth.getUser()?.id ?? '';
+        this.posts = posts.filter((p) => p.userId !== currentUserId);
         this.loading = false;
-        this.cdr.markForCheck();
+        this.cdr.detectChanges();
+        // Load like status for each post
+        this.posts.forEach((p) => {
+          this.postService.getLikeStatus(p.id).subscribe({
+            next: (s) => {
+              this.likeMap[p.id] = s;
+              this.cdr.detectChanges();
+            },
+          });
+          // Load follow status for each author
+          if (!this.followMap[p.userId]) {
+            this.postService.getFollowStatus(p.userId).subscribe({
+              next: (fs) => {
+                this.followMap[p.userId] = fs;
+                this.cdr.detectChanges();
+              },
+            });
+          }
+        });
       },
       error: () => {
         this.error = 'Unable to load posts. Please try again.';
         this.loading = false;
-        this.cdr.markForCheck();
+        this.cdr.detectChanges();
       },
     });
+  }
+
+  openPost(postId: string): void {
+    this.router.navigate(['/post', postId]);
+  }
+
+  toggleLike(event: Event, postId: string): void {
+    event.stopPropagation();
+    this.postService.toggleLike(postId).subscribe({
+      next: (s) => {
+        this.likeMap[postId] = s;
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  getLikeCount(postId: string): number {
+    return this.likeMap[postId]?.like_count ?? 0;
+  }
+
+  isLiked(postId: string): boolean {
+    return this.likeMap[postId]?.liked ?? false;
+  }
+
+  toggleFollow(event: Event, userId: string): void {
+    event.stopPropagation();
+    this.postService.toggleFollow(userId).subscribe({
+      next: (fs) => {
+        this.followMap[userId] = fs;
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  isFollowing(userId: string): boolean {
+    return this.followMap[userId]?.following ?? false;
   }
 }
