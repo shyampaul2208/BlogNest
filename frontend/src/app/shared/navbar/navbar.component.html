@@ -5,13 +5,42 @@
     <nav class="nav-links" *ngIf="user">
       <a routerLink="/home" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">Home</a>
       <a routerLink="/feed" routerLinkActive="active">Explore</a>
+      <a routerLink="/search" routerLinkActive="active">Search</a>
       <a routerLink="/write" routerLinkActive="active">Write</a>
     </nav>
 
     <div class="user-area" *ngIf="user">
+      <div class="follow-counts">
+        <span class="count-item clickable" (click)="openFollowModal('followers')"><strong>{{ followerCount }}</strong> Followers</span>
+        <span class="count-item clickable" (click)="openFollowModal('following')"><strong>{{ followingCount }}</strong> Following</span>
+      </div>
       <img *ngIf="user.picture" [src]="user.picture" [alt]="user.name" class="avatar" referrerpolicy="no-referrer" />
       <span class="user-name">{{ user.name }}</span>
       <button class="btn-sign-out" (click)="logout()">Sign Out</button>
     </div>
   </div>
 </header>
+
+<!-- Follow list modal -->
+<div class="follow-modal-overlay" *ngIf="showFollowModal" (click)="closeFollowModal()">
+  <div class="follow-modal" (click)="$event.stopPropagation()">
+    <div class="follow-modal-header">
+      <h3>{{ followModalTitle }}</h3>
+      <button class="follow-modal-close" (click)="closeFollowModal()">&times;</button>
+    </div>
+    <div class="follow-modal-body">
+      <div *ngIf="followModalLoading" class="modal-status">Loading…</div>
+      <div *ngIf="!followModalLoading && followModalUsers.length === 0" class="modal-status empty">No users yet.</div>
+      <div class="follow-user-list" *ngIf="!followModalLoading && followModalUsers.length > 0">
+        <div class="follow-user-item" *ngFor="let u of followModalUsers" (click)="viewUser(u.id)">
+          <img *ngIf="u.picture" [src]="u.picture" class="follow-user-pic" referrerpolicy="no-referrer" alt="" />
+          <div *ngIf="!u.picture" class="follow-user-pic placeholder">{{ u.name?.charAt(0) || '?' }}</div>
+          <div class="follow-user-info">
+            <span class="follow-user-name">{{ u.name }}</span>
+            <span class="follow-user-email">{{ u.email }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
