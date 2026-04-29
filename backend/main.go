@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -48,6 +50,9 @@ func main() {
 	// Migrate
 	db.AutoMigrate(&User{}, &Post{}, &Comment{}, &Like{}, &Follow{})
 
+	// Uploads directory
+	os.MkdirAll("./uploads", 0755)
+
 	// OAuth config
 	oauthConfig = &oauth2.Config{
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
@@ -68,6 +73,7 @@ func main() {
 		AllowCredentials: true,
 	}))
 
+	r.Static("/uploads", "./uploads")
 	registerRoutes(r)
 
 	r.Run(":8080")
@@ -77,6 +83,7 @@ func registerRoutes(r *gin.Engine) {
 	api := r.Group("/api")
 	{
 		api.GET("/health", healthCheck)
+		api.POST("/upload", authMiddleware(), uploadImage)
 		api.GET("/posts", listPosts)
 		api.GET("/my-posts", authMiddleware(), listMyPosts)
 		api.POST("/posts", authMiddleware(), createPost)
@@ -285,8 +292,9 @@ func listMyPosts(c *gin.Context) {
 
 func createPost(c *gin.Context) {
 	var req struct {
-		Title   string `json:"title" binding:"required"`
-		Content string `json:"content" binding:"required"`
+		Title    string `json:"title" binding:"required"`
+		Content  string `json:"content" binding:"required"`
+		ImageURL string `json:"image_url"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -307,10 +315,11 @@ func createPost(c *gin.Context) {
 	}
 
 	post := Post{
-		ID:      uuid.New().String(),
-		UserID:  user.ID,
-		Title:   strings.TrimSpace(req.Title),
-		Content: strings.TrimSpace(req.Content),
+		ID:       uuid.New().String(),
+		UserID:   user.ID,
+		Title:    strings.TrimSpace(req.Title),
+		Content:  strings.TrimSpace(req.Content),
+		ImageURL: req.ImageURL,
 	}
 
 	if post.Title == "" || post.Content == "" {
@@ -333,6 +342,42 @@ func createPost(c *gin.Context) {
 
 func healthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func uploadImage(c *gin.Context) {
+	file, header, err := c.Request.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No image provided"})
+		return
+	}
+	defer file.Close()
+
+	if header.Size > 5*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Image too large (max 5MB)"})
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true}
+	if !allowed[ext] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file type. Allowed: jpg, jpeg, png, gif, webp"})
+		return
+	}
+
+	filename := uuid.New().String() + ext
+	dst, err := os.Create("./uploads/" + filename)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write image"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": "/uploads/" + filename})
 }
 
 func generateState() string {
@@ -535,8 +580,9 @@ func updatePost(c *gin.Context) {
 	}
 
 	var req struct {
-		Title   string `json:"title" binding:"required"`
-		Content string `json:"content" binding:"required"`
+		Title    string `json:"title" binding:"required"`
+		Content  string `json:"content" binding:"required"`
+		ImageURL string `json:"image_url"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -554,6 +600,7 @@ func updatePost(c *gin.Context) {
 
 	post.Title = title
 	post.Content = content
+	post.ImageURL = req.ImageURL
 
 	if err := db.Save(&post).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update post"})
