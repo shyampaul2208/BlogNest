@@ -1,0 +1,38 @@
+<app-navbar />
+
+<main class="search-page">
+  <h2>Search Users</h2>
+
+  <div class="search-bar">
+    <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input
+      type="text"
+      [(ngModel)]="query"
+      (ngModelChange)="onQueryChange()"
+      placeholder="Search by name or email…"
+      autofocus
+    />
+  </div>
+
+  <div *ngIf="searching" class="status">Searching…</div>
+
+  <div *ngIf="searched && !searching && users.length === 0" class="status empty">
+    No users found matching "{{ query }}".
+  </div>
+
+  <div class="user-list" *ngIf="users.length > 0">
+    <article *ngFor="let user of users" class="user-card" (click)="viewUser(user.id)">
+      <img *ngIf="user.picture" [src]="user.picture" class="user-pic" referrerpolicy="no-referrer" alt="" />
+      <div *ngIf="!user.picture" class="user-pic placeholder">{{ user.name?.charAt(0) || '?' }}</div>
+      <div class="user-info">
+        <span class="user-name">{{ user.name }}</span>
+        <span class="user-email">{{ user.email }}</span>
+      </div>
+      <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="m9 18 6-6-6-6"/>
+      </svg>
+    </article>
+  </div>
+</main>

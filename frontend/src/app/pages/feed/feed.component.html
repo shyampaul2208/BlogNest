@@ -9,17 +9,27 @@
   <div *ngIf="!loading && !error && posts.length === 0" class="status empty">No posts yet. Be the first to write one!</div>
 
   <div class="post-list" *ngIf="!loading && !error && posts.length > 0">
-    <article *ngFor="let post of posts" class="post-card">
+    <article *ngFor="let post of posts" class="post-card" (click)="openPost(post.id)">
       <div class="card-header">
         <img *ngIf="post.authorPicture" [src]="post.authorPicture" class="author-pic" referrerpolicy="no-referrer" alt="" />
         <div *ngIf="!post.authorPicture" class="author-pic placeholder">{{ post.authorName.charAt(0) }}</div>
-        <div>
+        <div class="author-info">
           <span class="author-name">{{ post.authorName }}</span>
           <span class="post-date">{{ post.createdAt | date:'medium' }}</span>
         </div>
+        <button class="btn-follow" [class.following]="isFollowing(post.userId)" (click)="toggleFollow($event, post.userId)">
+          {{ isFollowing(post.userId) ? 'Following' : 'Follow' }}
+        </button>
       </div>
       <h3>{{ post.title }}</h3>
       <p class="post-content">{{ post.content }}</p>
+      <div class="post-actions">
+        <button class="btn-like-small" [class.liked]="isLiked(post.id)" (click)="toggleLike($event, post.id)">
+          <svg width="16" height="16" viewBox="0 0 24 24" [attr.fill]="isLiked(post.id) ? '#ef4444' : 'none'" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          {{ getLikeCount(post.id) }}
+        </button>
+        <span class="read-more">Read more →</span>
+      </div>
     </article>
   </div>
 </main>

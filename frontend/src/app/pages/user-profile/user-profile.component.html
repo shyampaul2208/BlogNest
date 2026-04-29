@@ -1,0 +1,71 @@
+<app-navbar />
+
+<main class="profile-page">
+  <button class="btn-back" (click)="goBack()">← Back to Search</button>
+
+  <div *ngIf="loading" class="status">Loading profile…</div>
+  <div *ngIf="error && !loading" class="status error">{{ error }}</div>
+
+  <div *ngIf="user && !loading">
+    <!-- Profile header -->
+    <div class="profile-header">
+      <img *ngIf="user.picture" [src]="user.picture" class="profile-pic" referrerpolicy="no-referrer" alt="" />
+      <div *ngIf="!user.picture" class="profile-pic placeholder">{{ user.name?.charAt(0) || '?' }}</div>
+      <div class="profile-info">
+        <h2>{{ user.name }}</h2>
+        <span class="profile-email">{{ user.email }}</span>
+        <div class="profile-stats">
+          <span class="profile-stat">{{ posts.length }} {{ posts.length === 1 ? 'Post' : 'Posts' }}</span>
+          <span class="profile-stat clickable" *ngIf="followStatus" (click)="openFollowModal('followers')">{{ followStatus.follower_count }} {{ followStatus.follower_count === 1 ? 'Follower' : 'Followers' }}</span>
+          <span class="profile-stat clickable" *ngIf="followStatus" (click)="openFollowModal('following')">{{ followStatus.following_count }} Following</span>
+        </div>
+      </div>
+      <button *ngIf="!isOwnProfile" class="btn-follow-profile" [class.following]="followStatus?.following" (click)="toggleFollow()">
+        {{ followStatus?.following ? 'Following' : 'Follow' }}
+      </button>
+    </div>
+
+    <!-- Posts -->
+    <h3 class="section-title">Posts by {{ user.name }}</h3>
+
+    <div *ngIf="posts.length === 0" class="status empty">This user hasn't written any posts yet.</div>
+
+    <div class="post-list" *ngIf="posts.length > 0">
+      <article *ngFor="let post of posts" class="post-card" (click)="openPost(post.id)">
+        <h4>{{ post.title }}</h4>
+        <p class="post-body">{{ post.content }}</p>
+        <div class="post-meta">
+          <span>{{ post.createdAt | date:'mediumDate' }}</span>
+          <span class="like-count">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#ef4444" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            {{ getLikeCount(post.id) }}
+          </span>
+        </div>
+      </article>
+    </div>
+  </div>
+</main>
+
+<!-- Follow list modal -->
+<div class="follow-modal-overlay" *ngIf="showFollowModal" (click)="closeFollowModal()">
+  <div class="follow-modal" (click)="$event.stopPropagation()">
+    <div class="follow-modal-header">
+      <h3>{{ followModalTitle }}</h3>
+      <button class="follow-modal-close" (click)="closeFollowModal()">&times;</button>
+    </div>
+    <div class="follow-modal-body">
+      <div *ngIf="followModalLoading" class="status">Loading…</div>
+      <div *ngIf="!followModalLoading && followModalUsers.length === 0" class="status empty">No users yet.</div>
+      <div class="follow-user-list" *ngIf="!followModalLoading && followModalUsers.length > 0">
+        <div class="follow-user-item" *ngFor="let u of followModalUsers" (click)="viewUser(u.id)">
+          <img *ngIf="u.picture" [src]="u.picture" class="follow-user-pic" referrerpolicy="no-referrer" alt="" />
+          <div *ngIf="!u.picture" class="follow-user-pic placeholder">{{ u.name?.charAt(0) || '?' }}</div>
+          <div class="follow-user-info">
+            <span class="follow-user-name">{{ u.name }}</span>
+            <span class="follow-user-email">{{ u.email }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

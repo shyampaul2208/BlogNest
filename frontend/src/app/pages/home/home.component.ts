@@ -18,6 +18,9 @@ import { Post } from '../../models/post.model';
 export class HomeComponent implements OnInit, OnDestroy {
   user: User | null = null;
   myPosts: Post[] = [];
+  totalLikes = 0;
+  followerCount = 0;
+  followingCount = 0;
   loading = true;
   error = '';
   private sub?: Subscription;
@@ -32,7 +35,10 @@ export class HomeComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.sub = this.auth.user$.subscribe((u) => {
       this.user = u;
-      this.cdr.markForCheck();
+      this.cdr.detectChanges();
+      if (u) {
+        this.loadFollowCounts(u.id);
+      }
     });
     this.loadMyPosts();
   }
@@ -48,21 +54,50 @@ export class HomeComponent implements OnInit, OnDestroy {
       next: (p) => {
         this.myPosts = p;
         this.loading = false;
-        this.cdr.markForCheck();
+        this.cdr.detectChanges();
+        this.loadTotalLikes();
       },
       error: () => {
         this.posts.getPosts().subscribe({
           next: (all) => {
             this.myPosts = all.filter((p) => p.userId === this.user?.id);
             this.loading = false;
-            this.cdr.markForCheck();
+            this.cdr.detectChanges();
+            this.loadTotalLikes();
           },
           error: () => {
             this.error = 'Unable to load your posts.';
             this.loading = false;
-            this.cdr.markForCheck();
+            this.cdr.detectChanges();
           },
         });
+      },
+    });
+  }
+
+  private loadTotalLikes(): void {
+    this.totalLikes = 0;
+    this.myPosts.forEach((p) => {
+      this.posts.getLikeStatus(p.id).subscribe({
+        next: (s) => {
+          this.totalLikes += s.like_count;
+          this.cdr.detectChanges();
+        },
+      });
+    });
+  }
+
+  openPost(postId: string): void {
+    this.router.navigate(['/post', postId]);
+  }
+
+  deletePost(event: Event, postId: string): void {
+    event.stopPropagation();
+    if (!confirm('Are you sure you want to delete this post?')) return;
+    this.posts.deletePost(postId).subscribe({
+      next: () => {
+        this.myPosts = this.myPosts.filter((p) => p.id !== postId);
+        this.cdr.detectChanges();
       },
     });
   }
@@ -73,5 +108,15 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   goFeed(): void {
     this.router.navigate(['/feed']);
+  }
+
+  private loadFollowCounts(userId: string): void {
+    this.posts.getFollowCounts(userId).subscribe({
+      next: (c) => {
+        this.followerCount = c.follower_count;
+        this.followingCount = c.following_count;
+        this.cdr.detectChanges();
+      },
+    });
   }
 }
