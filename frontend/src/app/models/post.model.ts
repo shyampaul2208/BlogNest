@@ -36,3 +36,30 @@ export interface Post {
   createdAt: string;
   imageUrl?: string;
 }
+
+export interface Comment {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  user?: RawPostUser;
+  CreatedAt?: string;
+}
+
+export interface LikeStatus {
+  liked: boolean;
+  like_count: number;
+}
+
+export interface FollowStatus {
+  following: boolean;
+  follower_count: number;
+  following_count: number;
+}
+
+export interface FollowUser {
+  id: string;
+  name: string;
+  email: string;
+  picture: string;
+}

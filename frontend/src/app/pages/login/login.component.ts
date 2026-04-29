@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -28,7 +28,7 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   private sub?: Subscription;
 
-  constructor(private auth: AuthService, private router: Router) {}
+  constructor(private auth: AuthService, private router: Router, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.auth.handleAuthCallback();
@@ -58,10 +58,14 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.isLoading = true;
     this.error = '';
     this.auth.login(this.loginEmail, this.loginPassword).subscribe({
-      next: () => (this.isLoading = false),
+      next: () => {
+        this.isLoading = false;
+        this.cdr.detectChanges();
+      },
       error: (err) => {
         this.isLoading = false;
         this.error = err?.error?.error || 'Login failed. Please try again.';
+        this.cdr.detectChanges();
       },
     });
   }
@@ -82,10 +86,14 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.isLoading = true;
     this.error = '';
     this.auth.signup(this.firstName, this.lastName, this.signupEmail, this.signupPassword).subscribe({
-      next: () => (this.isLoading = false),
+      next: () => {
+        this.isLoading = false;
+        this.cdr.detectChanges();
+      },
       error: (err) => {
         this.isLoading = false;
         this.error = err?.error?.error || 'Signup failed. Please try again.';
+        this.cdr.detectChanges();
       },
     });
   }

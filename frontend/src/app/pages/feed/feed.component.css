@@ -26,23 +26,44 @@
   gap: 18px;
 }
 
-.post-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 22px;
-  transition: box-shadow 0.15s;
-}
-
-.post-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-}
-
 .card-header {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 14px;
+}
+
+.author-info {
+  flex: 1;
+}
+
+.btn-follow {
+  padding: 5px 14px;
+  border: 1px solid #667eea;
+  border-radius: 20px;
+  background: #fff;
+  color: #667eea;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-follow:hover {
+  background: #667eea;
+  color: #fff;
+}
+
+.btn-follow.following {
+  background: #667eea;
+  color: #fff;
+  border-color: #667eea;
+}
+
+.btn-follow.following:hover {
+  background: #ef4444;
+  border-color: #ef4444;
 }
 
 .author-pic {
@@ -84,4 +105,63 @@
   color: #475569;
   line-height: 1.6;
   white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.post-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 22px;
+  transition: box-shadow 0.15s;
+  cursor: pointer;
+}
+
+.post-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.post-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.btn-like-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-like-small:hover {
+  border-color: #f87171;
+  color: #ef4444;
+}
+
+.btn-like-small.liked {
+  border-color: #f87171;
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.read-more {
+  color: #667eea;
+  font-size: 0.85rem;
+  font-weight: 500;
 }

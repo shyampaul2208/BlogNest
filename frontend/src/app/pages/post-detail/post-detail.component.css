@@ -1,0 +1,334 @@
+.detail-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 20px 60px;
+}
+
+.btn-back {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+  padding: 0;
+}
+
+.btn-back:hover {
+  text-decoration: underline;
+}
+
+.status {
+  text-align: center;
+  padding: 32px;
+  color: #64748b;
+}
+
+.status.error {
+  color: #dc2626;
+}
+
+/* Post full */
+.post-full {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 32px;
+}
+
+.post-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.author-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.author-pic {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.author-pic.placeholder {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.author-name {
+  display: block;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.post-date {
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.owner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-edit {
+  padding: 6px 16px;
+  background: #667eea;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-delete {
+  padding: 6px 16px;
+  background: #fff;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-delete:hover {
+  background: #fef2f2;
+}
+
+.post-full h1 {
+  font-size: 1.6rem;
+  color: #1e293b;
+  margin-bottom: 16px;
+}
+
+.post-body {
+  color: #475569;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  margin-bottom: 24px;
+}
+
+/* Like section */
+.like-section {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
+  margin-bottom: 24px;
+}
+
+.btn-like {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-like:hover {
+  border-color: #f87171;
+  color: #ef4444;
+}
+
+.btn-like.liked {
+  border-color: #f87171;
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+/* Comments */
+.comments-section h3 {
+  font-size: 1.1rem;
+  margin-bottom: 16px;
+  color: #1e293b;
+}
+
+.comment-form {
+  margin-bottom: 20px;
+}
+
+.comment-form textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  outline: none;
+  margin-bottom: 8px;
+}
+
+.comment-form textarea:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.btn-comment {
+  padding: 8px 18px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.btn-comment:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.no-comments {
+  color: #94a3b8;
+  text-align: center;
+  padding: 20px;
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comment-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.comment-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.comment-author {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.85rem;
+}
+
+.comment-date {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.btn-remove-comment {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #dc2626;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.comment-content {
+  color: #475569;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Edit card */
+.edit-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 32px;
+}
+
+.edit-card h2 {
+  font-size: 1.3rem;
+  margin-bottom: 20px;
+  color: #1e293b;
+}
+
+.edit-card label {
+  display: block;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+
+.edit-card input,
+.edit-card textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  outline: none;
+  margin-bottom: 18px;
+}
+
+.edit-card input:focus,
+.edit-card textarea:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.edit-card textarea {
+  resize: vertical;
+  min-height: 200px;
+  line-height: 1.6;
+}
+
+.error-msg {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-cancel {
+  padding: 10px 22px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #64748b;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-save {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
