@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1553,5 +1554,268 @@ func TestRegisterRoutesIncludesFollowPaths(t *testing.T) {
 		if !found {
 			t.Fatalf("expected route %s to be registered", route)
 		}
+	}
+}
+
+// ======== Sprint 4 Tests ========
+
+// performMultipartRequest builds a multipart/form-data request with a single file field.
+func performMultipartRequest(router http.Handler, method, path, fieldName, filename string, content []byte, headers map[string]string) *httptest.ResponseRecorder {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, _ := w.CreateFormFile(fieldName, filename)
+	part.Write(content)
+	w.Close()
+
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+// --- Route registration ---
+
+func TestRegisterRoutesIncludesSprint4UploadPath(t *testing.T) {
+	router := setupTestRouter(t)
+	routes := router.Routes()
+
+	found := false
+	for _, route := range routes {
+		if route.Method == "POST" && route.Path == "/api/upload" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected POST /api/upload to be registered")
+	}
+}
+
+// --- POST /api/upload ---
+
+func TestUploadImageRequiresAuth(t *testing.T) {
+	router := setupTestRouter(t)
+	rec := performMultipartRequest(router, http.MethodPost, "/api/upload", "image", "photo.jpg", []byte("fake"), nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestUploadImageRejectsMissingFile(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "uploader@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+
+	// Send multipart request with no file field
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	mw.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/upload", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	payload := decodeJSONBody(t, rec)
+	if payload["error"] != "No image provided" {
+		t.Fatalf("expected 'No image provided', got %v", payload["error"])
+	}
+}
+
+func TestUploadImageRejectsDisallowedFileType(t *testing.T) {
+	router := setupTestRouter(t)
+	os.MkdirAll("./uploads", 0755)
+	user := createTestUser(t, "uploader@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+
+	rec := performMultipartRequest(router, http.MethodPost, "/api/upload", "image", "file.txt", []byte("not an image"), map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	payload := decodeJSONBody(t, rec)
+	if _, ok := payload["error"].(string); !ok {
+		t.Fatalf("expected error string, got %v", payload["error"])
+	}
+}
+
+func TestUploadImageRejectsFileTooLarge(t *testing.T) {
+	router := setupTestRouter(t)
+	os.MkdirAll("./uploads", 0755)
+	user := createTestUser(t, "uploader@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+
+	largeContent := make([]byte, 6*1024*1024) // 6 MB
+
+	rec := performMultipartRequest(router, http.MethodPost, "/api/upload", "image", "big.jpg", largeContent, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	payload := decodeJSONBody(t, rec)
+	if payload["error"] != "Image too large (max 5MB)" {
+		t.Fatalf("expected size error, got %v", payload["error"])
+	}
+}
+
+func TestUploadImageSavesFileAndReturnsURL(t *testing.T) {
+	router := setupTestRouter(t)
+	os.MkdirAll("./uploads", 0755)
+	user := createTestUser(t, "uploader@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+
+	// Minimal JPEG header bytes
+	content := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46}
+
+	rec := performMultipartRequest(router, http.MethodPost, "/api/upload", "image", "photo.jpg", content, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	payload := decodeJSONBody(t, rec)
+	urlVal, ok := payload["url"].(string)
+	if !ok || !strings.HasPrefix(urlVal, "/uploads/") {
+		t.Fatalf("expected url starting with /uploads/, got %v", payload["url"])
+	}
+
+	// Verify file exists and register cleanup
+	filename := strings.TrimPrefix(urlVal, "/uploads/")
+	filePath := "./uploads/" + filename
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		t.Fatalf("expected uploaded file at %s", filePath)
+	}
+	t.Cleanup(func() { os.Remove(filePath) })
+}
+
+// --- createPost with image_url ---
+
+func TestCreatePostStoresImageURL(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "writer@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+
+	body := []byte(`{"title":"Image Post","content":"Has an image","image_url":"/uploads/test.jpg"}`)
+	rec := performRequest(router, http.MethodPost, "/api/posts", body, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var response Post
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.ImageURL != "/uploads/test.jpg" {
+		t.Fatalf("expected image_url stored, got %q", response.ImageURL)
+	}
+}
+
+func TestCreatePostWithoutImageURLSucceeds(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "writer@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+
+	body := []byte(`{"title":"Text Only","content":"No image"}`)
+	rec := performRequest(router, http.MethodPost, "/api/posts", body, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var response Post
+	json.Unmarshal(rec.Body.Bytes(), &response)
+	if response.ImageURL != "" {
+		t.Fatalf("expected empty image_url, got %q", response.ImageURL)
+	}
+}
+
+// --- updatePost with image_url ---
+
+func TestUpdatePostUpdatesImageURL(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "writer@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	post := Post{ID: "post-img-update", UserID: user.ID, Title: "Original", Content: "Original"}
+	db.Create(&post)
+
+	body := []byte(`{"title":"Updated","content":"Updated","image_url":"/uploads/new.png"}`)
+	rec := performRequest(router, http.MethodPut, "/api/posts/post-img-update", body, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var response Post
+	json.Unmarshal(rec.Body.Bytes(), &response)
+	if response.ImageURL != "/uploads/new.png" {
+		t.Fatalf("expected image_url updated, got %q", response.ImageURL)
+	}
+}
+
+func TestUpdatePostClearsImageURL(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "writer@example.com", "secret123")
+	token := createTokenForUser(t, user.ID)
+	post := Post{ID: "post-img-clear", UserID: user.ID, Title: "With Image", Content: "Content", ImageURL: "/uploads/old.jpg"}
+	db.Create(&post)
+
+	body := []byte(`{"title":"With Image","content":"Content","image_url":""}`)
+	rec := performRequest(router, http.MethodPut, "/api/posts/post-img-clear", body, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var response Post
+	json.Unmarshal(rec.Body.Bytes(), &response)
+	if response.ImageURL != "" {
+		t.Fatalf("expected image_url cleared, got %q", response.ImageURL)
+	}
+}
+
+// --- listPosts includes image_url ---
+
+func TestListPostsIncludesImageURLField(t *testing.T) {
+	router := setupTestRouter(t)
+	user := createTestUser(t, "author@example.com", "secret123")
+	post := Post{ID: "post-with-img", UserID: user.ID, Title: "Image Post", Content: "Body", ImageURL: "/uploads/thumb.jpg"}
+	db.Create(&post)
+
+	rec := performRequest(router, http.MethodGet, "/api/posts", nil, nil)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var posts []Post
+	json.Unmarshal(rec.Body.Bytes(), &posts)
+	if len(posts) == 0 {
+		t.Fatal("expected at least one post")
+	}
+	if posts[0].ImageURL != "/uploads/thumb.jpg" {
+		t.Fatalf("expected image_url in list response, got %q", posts[0].ImageURL)
 	}
 }
