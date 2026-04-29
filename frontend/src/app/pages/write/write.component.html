@@ -11,7 +11,31 @@
     <label for="content">Content</label>
     <textarea id="content" [(ngModel)]="content" [disabled]="publishing" rows="12" placeholder="Write your story…"></textarea>
 
-    <div *ngIf="error" class="error-msg">{{ error }}</div>
+    <label>Cover Image <span class="optional">(optional)</span></label>
+    <div class="image-upload-area" [class.has-preview]="imagePreview">
+      @if (!imagePreview) {
+        <label for="imageInput" class="upload-label">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>Click to upload image</span>
+          <span class="hint">JPG, PNG, GIF, WEBP · Max 5 MB</span>
+        </label>
+        <input id="imageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp"
+               (change)="onFileSelected($event)" class="file-input" [disabled]="publishing" />
+      } @else {
+        <img [src]="imagePreview" class="image-preview" alt="Preview" />
+        <button type="button" class="btn-remove-image" (click)="removeImage()" [disabled]="publishing">✕ Remove</button>
+      }
+    </div>
+    @if (uploadError) {
+      <div class="error-msg">{{ uploadError }}</div>
+    }
+
+    @if (error) {
+      <div class="error-msg">{{ error }}</div>
+    }
 
     <div class="actions">
       <button class="btn-cancel" (click)="cancel()" [disabled]="publishing">Cancel</button>
