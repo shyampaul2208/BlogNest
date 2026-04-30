@@ -71,11 +71,10 @@ describe('FeedComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('loads posts on init and filters out current user posts', () => {
+  it('loads all posts on init including current user own posts', () => {
     expect(postService.getPosts).toHaveBeenCalled();
-    // u1 is the current user, so only u2's post should remain
-    expect(component.posts.length).toBe(1);
-    expect(component.posts[0].userId).toBe('u2');
+    // Sprint 4: feed shows ALL posts, not filtered by current user
+    expect(component.posts.length).toBe(2);
   });
 
   it('sets loading to false after posts load', () => {
@@ -94,8 +93,8 @@ describe('FeedComponent', () => {
     expect(component.loading).toBe(false);
   });
 
-  it('loads like status for filtered posts', () => {
-    // Only p2 remains after filtering
+  it('loads like status for all posts including current user posts', () => {
+    expect(postService.getLikeStatus).toHaveBeenCalledWith('p1');
     expect(postService.getLikeStatus).toHaveBeenCalledWith('p2');
   });
 
@@ -123,8 +122,8 @@ describe('FeedComponent', () => {
 
   // --- Follow ---
 
-  it('loads follow status for filtered post authors', () => {
-    // Only p2 (userId u2) remains after filtering
+  it('loads follow status for all post authors', () => {
+    expect(postService.getFollowStatus).toHaveBeenCalledWith('u1');
     expect(postService.getFollowStatus).toHaveBeenCalledWith('u2');
   });
 
@@ -142,5 +141,38 @@ describe('FeedComponent', () => {
     expect(event.stopPropagation).toHaveBeenCalled();
     expect(postService.toggleFollow).toHaveBeenCalledWith('u2');
     expect(component.isFollowing('u2')).toBe(true);
+  });
+
+  // --- Sprint 4: image thumbnails & all-posts feed ---
+
+  it('includes posts with imageUrl in the feed', () => {
+    const postsWithImage: Post[] = [
+      { id: 'p3', userId: 'u3', title: 'With Image', content: 'body', authorName: 'Author', authorPicture: '', createdAt: '2026-01-01T00:00:00Z', imageUrl: '/uploads/img.jpg' },
+    ];
+    postService.getPosts.mockReturnValue(of(postsWithImage));
+
+    fixture = TestBed.createComponent(FeedComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    expect(component.posts[0].imageUrl).toBe('/uploads/img.jpg');
+  });
+
+  it('includes posts without imageUrl in the feed', () => {
+    const postsNoImage: Post[] = [
+      { id: 'p4', userId: 'u4', title: 'No Image', content: 'body', authorName: 'Author', authorPicture: '', createdAt: '2026-01-01T00:00:00Z' },
+    ];
+    postService.getPosts.mockReturnValue(of(postsNoImage));
+
+    fixture = TestBed.createComponent(FeedComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    expect(component.posts[0].imageUrl).toBeUndefined();
+  });
+
+  it('shows own posts in feed (no self-filtering)', () => {
+    // u1 is the logged-in user; both posts are returned
+    expect(component.posts.some((p) => p.userId === 'u1')).toBe(true);
   });
 });
