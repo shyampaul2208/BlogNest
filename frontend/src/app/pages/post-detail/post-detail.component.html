@@ -24,6 +24,9 @@
     </div>
 
     <h1>{{ post.title }}</h1>
+    @if (post.imageUrl) {
+      <img [src]="post.imageUrl" class="post-image" alt="Post image" />
+    }
     <div class="post-body">{{ post.content }}</div>
 
     <!-- Like section -->
@@ -67,6 +70,26 @@
     <input id="editTitle" type="text" [(ngModel)]="editTitle" [disabled]="saving" maxlength="120" />
     <label for="editContent">Content</label>
     <textarea id="editContent" [(ngModel)]="editContent" [disabled]="saving" rows="12"></textarea>
+
+    <label>Cover Image <span class="optional">(optional)</span></label>
+    <div class="image-upload-area" [class.has-preview]="editImagePreview">
+      @if (!editImagePreview) {
+        <label for="editImageInput" class="upload-label">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>Click to upload image</span>
+          <span class="hint">JPG, PNG, GIF, WEBP · Max 5 MB</span>
+        </label>
+        <input id="editImageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp"
+               (change)="onEditFileSelected($event)" class="file-input" [disabled]="saving" />
+      } @else {
+        <img [src]="editImagePreview" class="image-preview" alt="Preview" />
+        <button type="button" class="btn-remove-image" (click)="removeEditImage()" [disabled]="saving">✕ Remove</button>
+      }
+    </div>
+
     <div *ngIf="editError" class="error-msg">{{ editError }}</div>
     <div class="edit-actions">
       <button class="btn-cancel" (click)="cancelEdit()" [disabled]="saving">Cancel</button>

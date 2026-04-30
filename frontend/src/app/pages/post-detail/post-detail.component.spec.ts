@@ -34,6 +34,7 @@ describe('PostDetailComponent', () => {
       createComment: vi.fn().mockReturnValue(of({ id: 'c2', post_id: 'p1', user_id: 'u1', content: 'New', user: { name: 'Author' }, CreatedAt: '2026-01-02T00:00:00Z' })),
       deleteComment: vi.fn().mockReturnValue(of({ message: 'Deleted' })),
       updatePost: vi.fn().mockReturnValue(of({ ...fakePost, title: 'Updated Title', content: 'Updated Content' })),
+      uploadImage: vi.fn(),
       deletePost: vi.fn().mockReturnValue(of({ message: 'Deleted' })),
       getFollowCounts: vi.fn().mockReturnValue(of({ follower_count: 0, following_count: 0 })),
       followCountRefresh$: new Subject<void>(),
@@ -139,7 +140,7 @@ describe('PostDetailComponent', () => {
     component.editTitle = 'Updated Title';
     component.editContent = 'Updated Content';
     component.saveEdit();
-    expect(postService.updatePost).toHaveBeenCalledWith('p1', 'Updated Title', 'Updated Content');
+    expect(postService.updatePost).toHaveBeenCalledWith('p1', 'Updated Title', 'Updated Content', '');
     expect(component.post?.title).toBe('Updated Title');
     expect(component.editing).toBe(false);
   });
@@ -194,5 +195,71 @@ describe('PostDetailComponent', () => {
     component = fixture.componentInstance;
     fixture.detectChanges();
     expect(component.error).toBe('Failed to load post.');
+  });
+
+  // --- Sprint 4: image editing ---
+
+  it('startEdit populates editImageUrl from post imageUrl', () => {
+    component.post = { ...fakePost, imageUrl: '/uploads/img.jpg' } as any;
+    component.startEdit();
+    expect(component.editImageUrl).toBe('/uploads/img.jpg');
+  });
+
+  it('startEdit sets editImageUrl to empty string when post has no imageUrl', () => {
+    component.startEdit();
+    expect(component.editImageUrl).toBe('');
+  });
+
+  it('removeEditImage clears editImageUrl, editImageFile, editImagePreview', () => {
+    component.editImageUrl = '/uploads/img.jpg';
+    component.editImageFile = new File(['x'], 'x.jpg', { type: 'image/jpeg' });
+    component.editImagePreview = 'data:image/jpeg;base64,abc';
+    component.removeEditImage();
+    expect(component.editImageUrl).toBe('');
+    expect(component.editImageFile).toBeNull();
+    expect(component.editImagePreview).toBeNull();
+  });
+
+  it('saveEdit passes existing editImageUrl when no new file is selected', () => {
+    component.post = { ...fakePost, imageUrl: '/uploads/existing.jpg' } as any;
+    component.startEdit();
+    component.editTitle = 'Updated Title';
+    component.editContent = 'Updated Content';
+    component.editImageFile = null;
+    component.saveEdit();
+    expect(postService.updatePost).toHaveBeenCalledWith('p1', 'Updated Title', 'Updated Content', '/uploads/existing.jpg');
+  });
+
+  it('saveEdit uploads new image file then saves with returned url', () => {
+    postService.uploadImage.mockReturnValue(of({ url: '/uploads/new.jpg' }));
+    component.startEdit();
+    component.editTitle = 'Updated Title';
+    component.editContent = 'Updated Content';
+    component.editImageFile = new File(['x'], 'new.jpg', { type: 'image/jpeg' });
+    component.saveEdit();
+    expect(postService.uploadImage).toHaveBeenCalled();
+    expect(postService.updatePost).toHaveBeenCalledWith('p1', 'Updated Title', 'Updated Content', '/uploads/new.jpg');
+  });
+
+  it('onEditFileSelected accepts valid image', () => {
+    const file = new File(['data'], 'photo.jpg', { type: 'image/jpeg' });
+    const event = { target: { files: [file] } } as any;
+    component.onEditFileSelected(event);
+    expect(component.editImageFile).toBe(file);
+  });
+
+  it('onEditFileSelected rejects invalid file type', () => {
+    const file = new File(['data'], 'doc.pdf', { type: 'application/pdf' });
+    const event = { target: { files: [file] } } as any;
+    component.onEditFileSelected(event);
+    expect(component.editImageFile).toBeNull();
+  });
+
+  it('onEditFileSelected rejects file larger than 5 MB', () => {
+    const bigContent = new Uint8Array(6 * 1024 * 1024);
+    const file = new File([bigContent], 'big.png', { type: 'image/png' });
+    const event = { target: { files: [file] } } as any;
+    component.onEditFileSelected(event);
+    expect(component.editImageFile).toBeNull();
   });
 });

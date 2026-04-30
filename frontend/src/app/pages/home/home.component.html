@@ -38,6 +38,9 @@
 
     <div *ngIf="!loading && myPosts.length > 0" class="post-grid">
       <article *ngFor="let post of myPosts" class="post-card" (click)="openPost(post.id)">
+        @if (post.imageUrl) {
+          <img [src]="post.imageUrl" class="post-thumb" alt="" />
+        }
         <h4>{{ post.title }}</h4>
         <p class="post-body">{{ post.content }}</p>
         <div class="post-meta">

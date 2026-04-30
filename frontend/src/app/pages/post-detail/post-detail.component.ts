@@ -31,6 +31,9 @@ export class PostDetailComponent implements OnInit, OnDestroy {
   editing = false;
   editTitle = '';
   editContent = '';
+  editImageUrl = '';
+  editImageFile: File | null = null;
+  editImagePreview: string | null = null;
   editError = '';
   saving = false;
 
@@ -141,12 +144,46 @@ export class PostDetailComponent implements OnInit, OnDestroy {
     this.editing = true;
     this.editTitle = this.post.title;
     this.editContent = this.post.content;
+    this.editImageUrl = this.post.imageUrl ?? '';
+    this.editImagePreview = this.post.imageUrl ?? null;
+    this.editImageFile = null;
     this.editError = '';
   }
 
   cancelEdit(): void {
     this.editing = false;
+    this.editImageFile = null;
+    this.editImagePreview = null;
     this.editError = '';
+  }
+
+  onEditFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    const file = input.files[0];
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      this.editError = 'Invalid file type. Only JPEG, PNG, GIF, WEBP allowed.';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      this.editError = 'Image too large (max 5MB).';
+      return;
+    }
+    this.editImageFile = file;
+    this.editError = '';
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.editImagePreview = reader.result as string;
+      this.cdr.detectChanges();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  removeEditImage(): void {
+    this.editImageFile = null;
+    this.editImagePreview = null;
+    this.editImageUrl = '';
   }
 
   saveEdit(): void {
@@ -157,11 +194,30 @@ export class PostDetailComponent implements OnInit, OnDestroy {
     }
     this.saving = true;
     this.editError = '';
-    this.posts.updatePost(this.post.id, this.editTitle.trim(), this.editContent.trim()).subscribe({
+
+    if (this.editImageFile) {
+      this.posts.uploadImage(this.editImageFile).subscribe({
+        next: (res) => this.doSaveEdit(res.url),
+        error: (err) => {
+          this.editError = err?.error?.error || 'Failed to upload image.';
+          this.saving = false;
+          this.cdr.detectChanges();
+        },
+      });
+    } else {
+      this.doSaveEdit(this.editImageUrl);
+    }
+  }
+
+  private doSaveEdit(imageUrl: string): void {
+    if (!this.post) return;
+    this.posts.updatePost(this.post.id, this.editTitle.trim(), this.editContent.trim(), imageUrl).subscribe({
       next: (updated) => {
         this.post = updated;
         this.editing = false;
         this.saving = false;
+        this.editImageFile = null;
+        this.editImagePreview = null;
         this.cdr.detectChanges();
       },
       error: (err) => {

@@ -20,7 +20,6 @@ export class FeedComponent implements OnInit, OnDestroy {
   error = '';
   likeMap: Record<string, LikeStatus> = {};
   followMap: Record<string, FollowStatus> = {};
-  private allPosts: Post[] = [];
   private sub?: Subscription;
 
   constructor(
@@ -31,9 +30,7 @@ export class FeedComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    this.sub = this.auth.user$.subscribe((u) => {
-      const currentUserId = u?.id ?? '';
-      this.posts = this.allPosts.filter((p) => p.userId !== currentUserId);
+    this.sub = this.auth.user$.subscribe(() => {
       this.cdr.detectChanges();
     });
     this.loadPosts();
@@ -48,9 +45,7 @@ export class FeedComponent implements OnInit, OnDestroy {
     this.error = '';
     this.postService.getPosts().subscribe({
       next: (posts) => {
-        this.allPosts = posts;
-        const currentUserId = this.auth.getUser()?.id ?? '';
-        this.posts = posts.filter((p) => p.userId !== currentUserId);
+        this.posts = posts;
         this.loading = false;
         this.cdr.detectChanges();
         // Load like status for each post
