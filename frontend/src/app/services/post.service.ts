@@ -27,9 +27,15 @@ export class PostService {
       .pipe(map((raw) => (raw || []).map((r) => this.normalize(r))));
   }
 
-  createPost(title: string, content: string): Observable<Post> {
+  uploadImage(file: File): Observable<{ url: string }> {
+    const formData = new FormData();
+    formData.append('image', file);
+    return this.http.post<{ url: string }>('/api/upload', formData, { headers: this.authHeaders() });
+  }
+
+  createPost(title: string, content: string, imageUrl?: string): Observable<Post> {
     return this.http
-      .post<RawPost>('/api/posts', { title, content }, { headers: this.authHeaders() })
+      .post<RawPost>('/api/posts', { title, content, image_url: imageUrl ?? '' }, { headers: this.authHeaders() })
       .pipe(map((r) => this.normalize(r)));
   }
 
@@ -39,9 +45,9 @@ export class PostService {
       .pipe(map((res) => this.normalize(res.post)));
   }
 
-  updatePost(id: string, title: string, content: string): Observable<Post> {
+  updatePost(id: string, title: string, content: string, imageUrl?: string): Observable<Post> {
     return this.http
-      .put<RawPost>(`/api/posts/${id}`, { title, content }, { headers: this.authHeaders() })
+      .put<RawPost>(`/api/posts/${id}`, { title, content, image_url: imageUrl ?? '' }, { headers: this.authHeaders() })
       .pipe(map((r) => this.normalize(r)));
   }
 

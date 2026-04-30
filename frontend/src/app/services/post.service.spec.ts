@@ -83,7 +83,7 @@ describe('PostService', () => {
 
   // --- createPost ---
 
-  it('createPost sends POST /api/posts with title and content', () => {
+  it('createPost sends POST /api/posts with title, content, and image_url', () => {
     const raw = {
       id: 'p2',
       user_id: 'u1',
@@ -98,7 +98,7 @@ describe('PostService', () => {
 
     const req = httpTesting.expectOne('/api/posts');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ title: 'New Post', content: 'New Body' });
+    expect(req.request.body).toEqual({ title: 'New Post', content: 'New Body', image_url: '' });
     req.flush(raw);
 
     expect(result?.id).toBe('p2');
@@ -178,7 +178,7 @@ describe('PostService', () => {
 
   // --- Sprint 3: updatePost ---
 
-  it('updatePost sends PUT /api/posts/:id with title and content', () => {
+  it('updatePost sends PUT /api/posts/:id with title, content, and image_url', () => {
     const raw = { id: 'p1', user_id: 'u1', user: { id: 'u1', name: 'Me' }, title: 'Updated', content: 'New body', createdAt: '2026-03-25T00:00:00Z' };
 
     let result: any;
@@ -186,7 +186,7 @@ describe('PostService', () => {
 
     const req = httpTesting.expectOne('/api/posts/p1');
     expect(req.request.method).toBe('PUT');
-    expect(req.request.body).toEqual({ title: 'Updated', content: 'New body' });
+    expect(req.request.body).toEqual({ title: 'Updated', content: 'New body', image_url: '' });
     req.flush(raw);
 
     expect(result?.title).toBe('Updated');
@@ -389,5 +389,88 @@ describe('PostService', () => {
 
     expect(result.follower_count).toBe(10);
     expect(result.following_count).toBe(7);
+  });
+
+  // --- Sprint 4: uploadImage ---
+
+  it('uploadImage sends POST /api/upload with FormData and auth header', () => {
+    const file = new File(['content'], 'photo.jpg', { type: 'image/jpeg' });
+    let result: any;
+    service.uploadImage(file).subscribe((r) => (result = r));
+
+    const req = httpTesting.expectOne('/api/upload');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer test-jwt');
+    expect(req.request.body instanceof FormData).toBe(true);
+    req.flush({ url: '/uploads/uuid.jpg' });
+
+    expect(result.url).toBe('/uploads/uuid.jpg');
+  });
+
+  // --- Sprint 4: createPost with imageUrl ---
+
+  it('createPost sends provided imageUrl as image_url in request body', () => {
+    const raw = { id: 'p1', user_id: 'u1', user: { id: 'u1', name: 'Me' }, title: 'T', content: 'C', image_url: '/uploads/img.jpg', createdAt: '2026-01-01T00:00:00Z' };
+    service.createPost('T', 'C', '/uploads/img.jpg').subscribe();
+
+    const req = httpTesting.expectOne('/api/posts');
+    expect(req.request.body).toEqual({ title: 'T', content: 'C', image_url: '/uploads/img.jpg' });
+    req.flush(raw);
+  });
+
+  it('createPost sends empty image_url when imageUrl argument is omitted', () => {
+    const raw = { id: 'p1', user_id: 'u1', user: { id: 'u1', name: 'Me' }, title: 'T', content: 'C', createdAt: '2026-01-01T00:00:00Z' };
+    service.createPost('T', 'C').subscribe();
+
+    const req = httpTesting.expectOne('/api/posts');
+    expect(req.request.body).toEqual({ title: 'T', content: 'C', image_url: '' });
+    req.flush(raw);
+  });
+
+  // --- Sprint 4: updatePost with imageUrl ---
+
+  it('updatePost sends provided imageUrl as image_url in request body', () => {
+    const raw = { id: 'p1', user_id: 'u1', user: { id: 'u1', name: 'Me' }, title: 'T', content: 'C', image_url: '/uploads/new.png', createdAt: '2026-01-01T00:00:00Z' };
+    service.updatePost('p1', 'T', 'C', '/uploads/new.png').subscribe();
+
+    const req = httpTesting.expectOne('/api/posts/p1');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ title: 'T', content: 'C', image_url: '/uploads/new.png' });
+    req.flush(raw);
+  });
+
+  it('updatePost sends empty image_url when imageUrl argument is omitted', () => {
+    const raw = { id: 'p1', user_id: 'u1', user: { id: 'u1', name: 'Me' }, title: 'T', content: 'C', createdAt: '2026-01-01T00:00:00Z' };
+    service.updatePost('p1', 'T', 'C').subscribe();
+
+    const req = httpTesting.expectOne('/api/posts/p1');
+    expect(req.request.body).toEqual({ title: 'T', content: 'C', image_url: '' });
+    req.flush(raw);
+  });
+
+  // --- Sprint 4: normalize imageUrl mapping ---
+
+  it('normalize maps image_url from lowercase field to imageUrl', () => {
+    const raw = [{ id: 'p1', user_id: 'u1', user: { id: 'u1', name: 'Me' }, title: 'T', content: 'C', image_url: '/uploads/a.jpg', createdAt: '2026-01-01T00:00:00Z' }];
+    let result: Post[] = [];
+    service.getPosts().subscribe((p) => (result = p));
+    httpTesting.expectOne('/api/posts').flush(raw);
+    expect(result[0].imageUrl).toBe('/uploads/a.jpg');
+  });
+
+  it('normalize maps ImageURL from PascalCase field to imageUrl', () => {
+    const raw = [{ ID: 'p1', UserID: 'u1', User: { ID: 'u1', Name: 'Me' }, Title: 'T', Content: 'C', ImageURL: '/uploads/b.jpg', CreatedAt: '2026-01-01T00:00:00Z' }];
+    let result: Post[] = [];
+    service.getPosts().subscribe((p) => (result = p));
+    httpTesting.expectOne('/api/posts').flush(raw);
+    expect(result[0].imageUrl).toBe('/uploads/b.jpg');
+  });
+
+  it('normalize sets imageUrl to undefined when no image field present', () => {
+    const raw = [{ id: 'p1', user_id: 'u1', user: { id: 'u1', name: 'Me' }, title: 'T', content: 'C', createdAt: '2026-01-01T00:00:00Z' }];
+    let result: Post[] = [];
+    service.getPosts().subscribe((p) => (result = p));
+    httpTesting.expectOne('/api/posts').flush(raw);
+    expect(result[0].imageUrl).toBeUndefined();
   });
 });

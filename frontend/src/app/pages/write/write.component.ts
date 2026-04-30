@@ -18,7 +18,40 @@ export class WriteComponent {
   publishing = false;
   error = '';
 
+  selectedFile: File | null = null;
+  imagePreview: string | null = null;
+  uploadError = '';
+
   constructor(private posts: PostService, private router: Router) {}
+
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    const file = input.files[0];
+
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      this.uploadError = 'Invalid file type. Only JPEG, PNG, GIF, WEBP allowed.';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      this.uploadError = 'Image too large (max 5MB).';
+      return;
+    }
+
+    this.selectedFile = file;
+    this.uploadError = '';
+
+    const reader = new FileReader();
+    reader.onload = () => { this.imagePreview = reader.result as string; };
+    reader.readAsDataURL(file);
+  }
+
+  removeImage(): void {
+    this.selectedFile = null;
+    this.imagePreview = null;
+    this.uploadError = '';
+  }
 
   publish(): void {
     if (!this.title.trim() || !this.content.trim()) {
@@ -29,7 +62,21 @@ export class WriteComponent {
     this.publishing = true;
     this.error = '';
 
-    this.posts.createPost(this.title.trim(), this.content.trim()).subscribe({
+    if (this.selectedFile) {
+      this.posts.uploadImage(this.selectedFile).subscribe({
+        next: (res) => this.createPostWithUrl(res.url),
+        error: (err) => {
+          this.publishing = false;
+          this.error = err?.error?.error || 'Failed to upload image.';
+        },
+      });
+    } else {
+      this.createPostWithUrl(undefined);
+    }
+  }
+
+  private createPostWithUrl(imageUrl?: string): void {
+    this.posts.createPost(this.title.trim(), this.content.trim(), imageUrl).subscribe({
       next: () => {
         this.publishing = false;
         this.router.navigate(['/home']);
